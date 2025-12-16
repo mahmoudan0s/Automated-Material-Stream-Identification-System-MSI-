@@ -1,38 +1,34 @@
-"""Reads images from each class folder under TRAIN_DIR.
-- Generates a fixed number of augmented images per class (as specified in AUG_COUNTS).
-- Applies class-specific augmentation pipelines.
-- Saves outputs into the same class folders with unique names (suffix _augXXXXX).
--Per-class Data Augmentation with fixed output size (keep dataset native size).
-- Final size is set to (H, W) = (384, 512) by default (landscape).
-- Applies class-specific augmentation and resizes back to FINAL_SIZE before saving."""
+"""
+Controlled Data Augmentation for MSI Project (TRAIN ONLY)
+
+- Ensures EACH class folder reaches exactly 700 images
+- Output size: (224, 224) for EfficientNet-B0
+- Each image:
+    * Always applies geometric transforms
+    * Applies 1 to 3 random appearance / lighting transforms
+"""
+
 import random
 from pathlib import Path
-from typing import List, Tuple
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
 
-#This is Mahmouds Path
-TRAIN_DIR = Path(r"C:\Users\DELL\myGithub\Automated-Material-Stream-Identification-System-MSI-\data\split\train")
+# ---------------- PATH ----------------
+TRAIN_DIR = Path(
+    r"C:\Users\DELL\myGithub\Automated-Material-Stream-Identification-System-MSI-\data\split\train"
+)
 
-FINAL_SIZE = (384, 512)  # change to (512, 384) if your images are portrait
-#Per-class augmentation targets --------
-AUG_COUNTS = {
-    "cardboard": 280,
-    "glass":     184,
-    "metal":     230,
-    "paper":     134,
-    "plastic":   194,
-    "trash":     377,
-}
+FINAL_SIZE = (384, 512) # (width, height)
+TARGET_COUNT = 700
 
 SEED = 42
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 SAVE_QUALITY_JPEG = 95
-MAX_PER_SOURCE = 6
 
 random.seed(SEED)
 np.random.seed(SEED)
 
+# ---------------- UTILS ----------------
 def is_image(p: Path) -> bool:
     return p.is_file() and p.suffix.lower() in IMG_EXTS
 
@@ -40,49 +36,77 @@ def to_rgb(img: Image.Image) -> Image.Image:
     return img.convert("RGB") if img.mode != "RGB" else img
 
 def resize_to_final(img: Image.Image) -> Image.Image:
-    """Resize to FINAL_SIZE regardless of intermediate ops."""
-    return img.resize((FINAL_SIZE[1], FINAL_SIZE[0]), resample=Image.BILINEAR)
+    return img.resize(FINAL_SIZE, Image.BILINEAR)
 
-# ----- Aug ops (use original size, then force FINAL_SIZE at the end) -----
+# ---------------- BASIC AUG OPS ----------------
 def rand_rotate(img, max_angle=10):
-    ang = random.uniform(-max_angle, max_angle)
-    return img.rotate(ang, resample=Image.BICUBIC, expand=True)
+    angle = random.uniform(-max_angle, max_angle)
+    return img.rotate(angle, resample=Image.BICUBIC, expand=True)
 
 def rand_hflip(img, p=0.5):
     return img.transpose(Image.FLIP_LEFT_RIGHT) if random.random() < p else img
 
 def rand_brightness(img, low=0.9, high=1.1):
-    factor = random.uniform(low, high)
-    return ImageEnhance.Brightness(img).enhance(factor)
+    return ImageEnhance.Brightness(img).enhance(random.uniform(low, high))
 
 def rand_contrast(img, low=0.9, high=1.1):
-    factor = random.uniform(low, high)
-    return ImageEnhance.Contrast(img).enhance(factor)
+    return ImageEnhance.Contrast(img).enhance(random.uniform(low, high))
 
 def rand_slight_crop(img, keep_low=0.95, keep_high=0.99):
     w, h = img.size
     keep = random.uniform(keep_low, keep_high)
     cw, ch = int(w * keep), int(h * keep)
 
-    left = (w - cw) // 2 + random.randint(-5, 5)
-    top  = (h - ch) // 2 + random.randint(-5, 5)
-    left = max(0, min(left, w - cw))
-    top  = max(0, min(top, h - ch))
+    left = max(0, (w - cw) // 2 + random.randint(-5, 5))
+    top  = max(0, (h - ch) // 2 + random.randint(-5, 5))
 
-    cropped = img.crop((left, top, left + cw, top + ch))
-    return resize_to_final(cropped)
+    return img.crop((left, top, left + cw, top + ch))
 
-def pipeline_hog_safe(img):
+# ---------------- APPEARANCE / LIGHTING OPS ----------------
+def rand_color_jitter(img, low=0.95, high=1.05):
+    r, g, b = img.split()
+    r = ImageEnhance.Brightness(r).enhance(random.uniform(low, high))
+    g = ImageEnhance.Brightness(g).enhance(random.uniform(low, high))
+    b = ImageEnhance.Brightness(b).enhance(random.uniform(low, high))
+    return Image.merge("RGB", (r, g, b))
+
+def rand_gamma(img, low=0.9, high=1.1):
+    gamma = random.uniform(low, high)
+    inv = 1.0 / gamma
+    table = [int((i / 255.0) ** inv * 255) for i in range(256)]
+    return img.point(table * 3)
+
+def rand_blur(img):
+    return img.filter(ImageFilter.GaussianBlur(
+        radius=random.uniform(0.5, 1.0))
+    )
+
+# ---------------- AUGMENTATION PIPELINE ----------------
+def augmentation_pipeline(img: Image.Image) -> Image.Image:
     img = to_rgb(img)
+
+    # Mandatory geometric transforms
     img = rand_rotate(img, 10)
     img = rand_hflip(img, 0.5)
-    img = rand_brightness(img, 0.9, 1.1)
-    img = rand_contrast(img, 0.9, 1.1)
+
+    # Optional transforms pool
+    optional_ops = [
+        lambda x: rand_brightness(x, 0.9, 1.1),
+        lambda x: rand_contrast(x, 0.9, 1.1),
+        rand_color_jitter,
+        rand_gamma,
+        rand_blur,
+    ]
+
+    # Apply 1–3 random optional transforms
+    for op in random.sample(optional_ops, random.randint(1, 3)):
+        img = op(img)
+
     img = rand_slight_crop(img)
-    return resize_to_final(img)
+    img = resize_to_final(img)
+    return img
 
-
-# --------- IMAGE LISTING ----------
+# ---------------- DATA HANDLING ----------------
 def list_class_images(class_dir: Path):
     imgs = [p for p in class_dir.iterdir() if is_image(p)]
     imgs.sort(key=lambda p: p.name.lower())
@@ -97,52 +121,43 @@ def ensure_unique_name(dst_dir: Path, stem: str) -> Path:
             return p
         idx += 1
 
-
-# --------- AUGMENTATION FUNCTION ----------
-def augment_class(class_dir: Path, num_to_gen: int):
-    """Generate `num_to_gen` augmented images for a given class folder."""
+def augment_class_to_target(class_dir: Path, target_count: int) -> int:
     images = list_class_images(class_dir)
-    if len(images) == 0:
-        print(f" No images found in {class_dir}")
+    current = len(images)
+
+    if current >= target_count:
+        print(f"[{class_dir.name}] Already has {current} images → skipped")
         return 0
+
+    to_generate = target_count - current
+    print(f"[{class_dir.name}] {current} → {target_count} (generate {to_generate})")
 
     generated = 0
     src_idx = 0
 
-    while generated < num_to_gen:
+    while generated < to_generate:
         src = images[src_idx % len(images)]
         with Image.open(src) as im:
-            im.load()
-
-            aug = pipeline_hog_safe(im)
+            aug = augmentation_pipeline(im)
             dst = ensure_unique_name(class_dir, src.stem)
-            aug.save(dst, quality=95)
-
+            aug.save(dst, quality=SAVE_QUALITY_JPEG)
             generated += 1
         src_idx += 1
 
     return generated
 
-
-
-
-# -------------- MAIN ----------------
+# ---------------- MAIN ----------------
 def main():
     total = 0
-    print(f"Final output size: {FINAL_SIZE}\n")
+    print(f"Target images per class: {TARGET_COUNT}")
+    print(f"Final image size: {FINAL_SIZE}\n")
 
-    for cls, n_aug in AUG_COUNTS.items():
-        cls_dir = TRAIN_DIR / cls
-        if not cls_dir.exists():
-            print(f"Skipping missing folder: {cls}")
+    for cls_dir in TRAIN_DIR.iterdir():
+        if not cls_dir.is_dir():
             continue
+        total += augment_class_to_target(cls_dir, TARGET_COUNT)
 
-        print(f"[{cls}] Generating +{n_aug} images...")
-        g = augment_class(cls_dir, n_aug)
-        print(f"Done → Generated: {g}")
-        total += g
-
-    print(f"\nAll done. Total generated: {total}")
+    print(f"\nAll done. Total generated images: {total}")
 
 if __name__ == "__main__":
     main()
