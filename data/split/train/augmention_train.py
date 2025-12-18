@@ -18,7 +18,7 @@ TRAIN_DIR = Path(
     r"C:\Users\DELL\myGithub\Automated-Material-Stream-Identification-System-MSI-\data\split\train"
 )
 
-FINAL_SIZE = (384, 512) # (width, height)
+FINAL_SIZE = (512, 384) # (width, height)
 TARGET_COUNT = 550
 
 SEED = 42
