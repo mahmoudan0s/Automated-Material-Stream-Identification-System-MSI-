@@ -10,7 +10,7 @@ from pathlib import Path
 import joblib
 
 UNKNOWN_LABEL = 6
-CONF_THRESHOLD = 0.6
+CONF_THRESHOLD = 0.55
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 LABEL_MAP = {
@@ -22,7 +22,7 @@ LABEL_MAP = {
     5: 5   # Trash
 }
 
-def predict_with_unknown(X, svm, threshold=0.6, unknown_label=6):
+def predict_with_unknown(X, svm, threshold=0.55, unknown_label=6):
     probs = svm.predict_proba(X)            # shape (N, num_classes)
     max_probs = probs.max(axis=1)
     preds = svm.classes_[probs.argmax(axis=1)]
@@ -85,7 +85,7 @@ def predict(dataFilePath, bestModelPath):
 if __name__ == "__main__":
     # Example usage
     test_folder = r"C:\Users\DELL\myGithub\Automated-Material-Stream-Identification-System-MSI-\deployment\testing" # replace with your test folder
-    svm_model_path = r"C:\Users\DELL\Downloads\svm_model.pkl"# replace if path is different
+    svm_model_path = r"C:\Users\DELL\myGithub\Automated-Material-Stream-Identification-System-MSI-\models\svm_model.pkl"# replace if path is different
 
     preds = predict(test_folder, svm_model_path)
     print("Predictions:", preds)
