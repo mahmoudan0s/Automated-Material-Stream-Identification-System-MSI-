@@ -10,22 +10,19 @@ from pathlib import Path
 import joblib
 
 UNKNOWN_LABEL = 6
-CONF_THRESHOLD = 0.45
+CONF_THRESHOLD = 0.6
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 LABEL_MAP = {
-    0: 2,  # Glass
-    1: 0,  # Paper
-    2: 4,  # Cardboard
-    3: 1,  # Plastic
-    4: 3,  # Metal
+    0: 0,  # Glass
+    1: 1,  # Paper
+    2: 2,  # Cardboard
+    3: 3,  # Plastic
+    4: 4,  # Metal
     5: 5   # Trash
 }
 
-def predict_with_unknown(X, svm, threshold=0.45, unknown_label=6):
-    """
-    Open-set prediction using SVM probabilities.
-    """
+def predict_with_unknown(X, svm, threshold=0.6, unknown_label=6):
     probs = svm.predict_proba(X)            # shape (N, num_classes)
     max_probs = probs.max(axis=1)
     preds = svm.classes_[probs.argmax(axis=1)]
@@ -40,17 +37,9 @@ def predict_with_unknown(X, svm, threshold=0.45, unknown_label=6):
     return np.array(final_preds), max_probs
 
 def predict(dataFilePath, bestModelPath):
-    """
-    Args:
-        dataFilePath (str): path to folder containing images
-        bestModelPath (str): path to svm_model.pkl
-    Returns:
-        List[int]: predicted labels (including UNKNOWN_LABEL)
-    """
-
     # -------- Load models --------
     svm = joblib.load(bestModelPath)
-    pca = joblib.load(bestModelPath.replace("pcaSvm_model.pkl", "pca_model.pkl"))
+    pca = joblib.load(bestModelPath.replace("svm_model.pkl", "pca_model.pkl"))
 
     # Feature extractor
     model = models.efficientnet_b0(weights="DEFAULT")
@@ -95,8 +84,8 @@ def predict(dataFilePath, bestModelPath):
 
 if __name__ == "__main__":
     # Example usage
-    test_folder = r"C:\Users\DELL\myGithub\Automated-Material-Stream-Identification-System-MSI-\deployment\testing"       # replace with your test folder
-    svm_model_path = r"C:\Users\DELL\myGithub\Automated-Material-Stream-Identification-System-MSI-\models\pcaSvm_model.pkl"        # replace if path is different
+    test_folder = r"C:\Users\DELL\myGithub\Automated-Material-Stream-Identification-System-MSI-\deployment\testing" # replace with your test folder
+    svm_model_path = r"C:\Users\DELL\Downloads\svm_model.pkl"# replace if path is different
 
     preds = predict(test_folder, svm_model_path)
     print("Predictions:", preds)
